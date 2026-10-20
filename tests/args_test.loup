@@ -1,64 +1,80 @@
 @mode(host.dual)
 
 from debug.assert import (expect, expectEq);
-from cli.args import (parse_args, DEFAULT_GREETING);
+from cli.args import (parse_args, is_sync_switch, fc_switches, MODE_AUTO, MODE_TEXT, MODE_BINARY,
+    DEFAULT_BUFFER_LINES, DEFAULT_SYNC_LINES, MSG_INVALID_SWITCH);
 
-func test_no_arguments(): void {
-    let none: list[string] = [];
-    let opts = parse_args(none).unwrap();
-    expectEq(opts.command, "", "no command");
-    expectEq(opts.operands.len(), 0, "no operands");
-    expectEq(opts.greeting, DEFAULT_GREETING, "default greeting");
-    expect(!opts.help and !opts.version and !opts.verbose and !opts.shout, "no flags set");
+func test_defaults(): void {
+    let opts = parse_args(["a.txt", "b.txt"]).unwrap();
+    expectEq(opts.mode, MODE_AUTO, "mode");
+    expectEq(opts.buffer_lines, DEFAULT_BUFFER_LINES, "buffer");
+    expectEq(opts.sync_lines, DEFAULT_SYNC_LINES, "sync");
+    expect(!opts.abbreviate and !opts.ignore_case and !opts.numbers, "flags off");
+    expect(!opts.keep_tabs and !opts.unicode and !opts.white, "more flags off");
+    expectEq(opts.operands.join(","), "a.txt,b.txt", "operands");
 }
 
-func test_command_and_operands(): void {
-    let opts = parse_args(["hello", "Ann"]).unwrap();
-    expectEq(opts.command, "hello", "command");
-    expectEq(opts.operands.len(), 1, "one operand");
-    expectEq(opts.operands[0], "Ann", "operand");
+func test_flags_any_case_and_prefix(): void {
+    let opts = parse_args(["/a", "-C", "/n", "/T", "-w", "/u", "a", "b"]).unwrap();
+    expect(opts.abbreviate and opts.ignore_case and opts.numbers, "/a -C /n");
+    expect(opts.keep_tabs and opts.white and opts.unicode, "/T -w /u");
+    expectEq(opts.operands.len(), 2, "two operands");
 }
 
-func test_flags_anywhere(): void {
-    let opts = parse_args(["-v", "hello", "--shout", "Ann"]).unwrap();
-    expect(opts.verbose, "verbose");
-    expect(opts.shout, "shout");
-    expectEq(opts.command, "hello", "command");
-    expectEq(opts.operands[0], "Ann", "operand");
+func test_combined_switches(): void {
+    let opts = parse_args(["/C/N", "a", "b"]).unwrap();
+    expect(opts.ignore_case and opts.numbers, "/C/N");
+}
+
+func test_mode_last_wins(): void {
+    expectEq(parse_args(["/B", "a", "b"]).unwrap().mode, MODE_BINARY, "/B");
+    expectEq(parse_args(["/L", "a", "b"]).unwrap().mode, MODE_TEXT, "/L");
+    expectEq(parse_args(["/B", "/L", "a", "b"]).unwrap().mode, MODE_TEXT, "/B /L");
+    expectEq(parse_args(["/l", "/b", "a", "b"]).unwrap().mode, MODE_BINARY, "/l /b");
+}
+
+func test_buffer_lines(): void {
+    expectEq(parse_args(["/LB5", "a", "b"]).unwrap().buffer_lines, 5, "/LB5");
+    expectEq(parse_args(["/lb:20", "a", "b"]).unwrap().buffer_lines, 20, "/lb:20");
+    expectEq(parse_args(["-LB", "7", "a", "b"]).unwrap().buffer_lines, 7, "-LB 7");
+    expect(parse_args(["/LB0", "a", "b"]).is_err(), "/LB0");
+    expectEq(parse_args(["/LB", "x", "a"]).unwrap_err(), MSG_INVALID_SWITCH, "/LB x");
+    expect(parse_args(["a", "b", "/LB"]).is_err(), "/LB without a value");
+}
+
+func test_sync_lines(): void {
+    expectEq(parse_args(["/5", "a", "b"]).unwrap().sync_lines, 5, "/5");
+    expectEq(parse_args(["-1", "a", "b"]).unwrap().sync_lines, 1, "-1");
+    expectEq(parse_args(["/3", "/10", "a", "b"]).unwrap().sync_lines, 10, "last wins");
+    expect(parse_args(["/0", "a", "b"]).is_err(), "/0");
+    let after = parse_args(["a", "--", "/5"]).unwrap();
+    expectEq(after.sync_lines, DEFAULT_SYNC_LINES, "after --");
+    expectEq(after.operands.join(","), "a,/5", "/5 after -- is a file");
+}
+
+func test_is_sync_switch(): void {
+    expect(is_sync_switch("/2"), "/2");
+    expect(is_sync_switch("-0010"), "-0010");
+    expect(!is_sync_switch("/"), "/");
+    expect(!is_sync_switch("/2a"), "/2a");
+    expect(!is_sync_switch("2"), "2");
+}
+
+func test_unknown_switch_is_a_file(): void {
+    let opts = parse_args(["/X", "/tmp/a.txt"]).unwrap();
+    expectEq(opts.operands.join(","), "/X,/tmp/a.txt", "operands");
+}
+
+func test_offline_accepted(): void {
+    let opts = parse_args(["/OFF", "/offline", "a", "b"]).unwrap();
+    expectEq(opts.operands.len(), 2, "both switches consumed");
+    expect(fc_switches().len() > 10, "declared");
 }
 
 func test_help_and_version(): void {
+    expect(parse_args(["/?"]).unwrap().help, "/?");
+    expect(parse_args(["a", "-?", "b"]).unwrap().help, "-? among files");
     expect(parse_args(["--help"]).unwrap().help, "--help");
-    expect(parse_args(["-h"]).unwrap().help, "-h");
     expect(parse_args(["--version"]).unwrap().version, "--version");
-    expect(parse_args(["-V"]).unwrap().version, "-V");
-}
-
-func test_value_option_forms(): void {
-    expectEq(parse_args(["-g", "Hi"]).unwrap().greeting, "Hi", "-g VALUE");
-    expectEq(parse_args(["--greeting", "Hi"]).unwrap().greeting, "Hi", "--greeting VALUE");
-    expectEq(parse_args(["--greeting=a=b"]).unwrap().greeting, "a=b", "--greeting=VALUE keeps '='");
-}
-
-func test_double_dash_ends_options(): void {
-    let opts = parse_args(["hello", "--", "--shout"]).unwrap();
-    expect(!opts.shout, "--shout after -- is an operand");
-    expectEq(opts.operands[0], "--shout", "operand");
-}
-
-func test_lone_dash_is_operand(): void {
-    let opts = parse_args(["hello", "-"]).unwrap();
-    expectEq(opts.operands[0], "-", "operand");
-}
-
-func test_unknown_option(): void {
-    expectEq(parse_args(["--nope"]).unwrap_err(), "unknown option '--nope'", "error message");
-}
-
-func test_missing_value(): void {
-    expectEq(parse_args(["-g"]).unwrap_err(), "option '-g' requires a value", "error message");
-}
-
-func test_flag_with_value(): void {
-    expectEq(parse_args(["--shout=1"]).unwrap_err(), "option '--shout' does not take a value", "error message");
+    expect(!parse_args(["a", "--version"]).unwrap().version, "--version with a file");
 }

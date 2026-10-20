@@ -1,98 +1,147 @@
 @mode(host.dual)
 
-# Command-line parsing. Loup 1.26 has no CLI library, so arguments are
-# parsed by hand into an Options value.
-#
-# Grammar: [OPTIONS] COMMAND [OPERANDS...]
-#   Options may appear anywhere before `--`; everything after `--` is an
-#   operand. Value options accept `--name VALUE` and `--name=VALUE`.
+# Command-line parsing for fc, with the shared Windows switch parser
+# (win/switches.loup): `/A /B /C /L /LBn /N /OFF[LINE] /T /U /W /nnnn`, in
+# any case, with `/` or `-`. `/nnnn` (a number as the switch name) cannot be
+# declared to the shared parser, so parse_args takes those tokens out first.
 
-pub const DEFAULT_GREETING: string = "Hello";
+from win.switches import (SwitchArgs, SwitchSpec, flag, glued_value, parse_switches, has_switch,
+    switch_value, parse_int_value);
 
+# fc's defaults: a 100-line buffer, and 2 matching lines to resynchronise.
+pub const DEFAULT_BUFFER_LINES: int = 100;
+pub const DEFAULT_SYNC_LINES: int = 2;
+
+pub const MSG_INSUFFICIENT: string = "FC: Insufficient number of file specifications";
+pub const MSG_TOO_MANY: string = "FC: Too many file specifications";
+pub const MSG_INVALID_SWITCH: string = "FC: Invalid Switch";
+
+# Comparison modes: decided from the file names unless /B or /L is given.
+pub const MODE_AUTO: int = 0;
+pub const MODE_TEXT: int = 1;
+pub const MODE_BINARY: int = 2;
+
+# Fields are `var` so that tests can adjust default_options().
 pub struct Options {
-    pub command: string;
-    pub operands: list[string];
-    pub help: bool;
-    pub version: bool;
-    pub verbose: bool;
-    pub shout: bool;
-    pub greeting: string;
+    pub var help: bool;
+    pub var version: bool;
+    pub var mode: int;            # MODE_AUTO, MODE_TEXT (/L) or MODE_BINARY (/B)
+    pub var abbreviate: bool;     # /A
+    pub var ignore_case: bool;    # /C
+    pub var numbers: bool;        # /N
+    pub var keep_tabs: bool;      # /T
+    pub var unicode: bool;        # /U
+    pub var white: bool;          # /W
+    pub var buffer_lines: int;    # /LBn
+    pub var sync_lines: int;      # /nnnn
+    pub var operands: list[string];
 }
 
+# Text-mode settings with fc's defaults; for tests and for callers that
+# compare without a command line.
+pub func default_options(operands: list[string]): Options {
+    return Options(help = false, version = false, mode = MODE_AUTO, abbreviate = false,
+        ignore_case = false, numbers = false, keep_tabs = false, unicode = false, white = false,
+        buffer_lines = DEFAULT_BUFFER_LINES, sync_lines = DEFAULT_SYNC_LINES, operands = operands);
+}
+
+# The switches fc declares (besides /nnnn).
+pub func fc_switches(): list[SwitchSpec] {
+    return [
+        flag("A"), flag("B"), flag("C"), flag("L"), flag("N"), flag("T"), flag("U"), flag("W"),
+        flag("OFF"), flag("OFFLINE"),
+        glued_value("LB", "0123456789"),
+    ];
+}
+
+# Whether the token is `/nnnn` or `-nnnn`: a prefix and one or more digits.
+pub func is_sync_switch(arg: string): bool {
+    if (arg.len() < 2) {
+        return false;
+    }
+    let prefix = arg.slice(0, 1);
+    if (prefix != "/" and prefix != "-") {
+        return false;
+    }
+    for (ch in arg.slice(1)) {
+        if ("0123456789".index_of(ch) < 0) {
+            return false;
+        }
+    }
+    return true;
+}
+
+# Which of /B and /L comes last on the command line decides the mode.
+func mode_of(parsed: SwitchArgs): int {
+    var mode = MODE_AUTO;
+    for (sw in parsed.switches) {
+        if (sw.name == "B") {
+            mode = MODE_BINARY;
+        } else if (sw.name == "L") {
+            mode = MODE_TEXT;
+        }
+    }
+    return mode;
+}
+
+# The statement form of `match` (arms that return) is deliberate: a match
+# expression whose arms build new values returns freed memory natively.
 pub func parse_args(argv: list[string]): Result[Options, string] {
-    var command = "";
-    var operands: list[string] = [];
-    var help = false;
-    var version = false;
-    var verbose = false;
-    var shout = false;
-    var greeting = DEFAULT_GREETING;
-    var only_operands = false;
-
-    var i = 0;
-    while (i < argv.len()) {
-        let arg = argv[i];
-        i += 1;
-
-        if (only_operands or arg == "-" or !arg.startsWith("-")) {
-            if (command.is_empty()) {
-                command = arg;
-            } else {
-                operands.push(arg);
-            }
-            continue;
+    # Take the /nnnn tokens out (before any `--`); the last one counts.
+    var rest: list[string] = [];
+    var sync_text = "";
+    var ended = false;
+    for (arg in argv) {
+        if (!ended and arg == "--") {
+            ended = true;
         }
-        if (arg == "--") {
-            only_operands = true;
-            continue;
-        }
-
-        # Split `--name=value` into its name and inline value.
-        var name = arg;
-        var inline_value: Option[string] = None;
-        if (arg.startsWith("--") and arg.contains("=")) {
-            let parts = arg.split("=");
-            name = parts[0];
-            inline_value = Some(parts.slice(1).join("="));
-        }
-
-        if (name == "-g" or name == "--greeting") {
-            match inline_value {
-                Some(v) => { greeting = v; },
-                None => {
-                    if (i >= argv.len()) {
-                        return Err(i"option '{$ name $}' requires a value");
-                    }
-                    greeting = argv[i];
-                    i += 1;
-                },
-            }
-            continue;
-        }
-
-        if (inline_value.is_some()) {
-            return Err(i"option '{$ name $}' does not take a value");
-        }
-        if (name == "-h" or name == "--help") {
-            help = true;
-        } else if (name == "-V" or name == "--version") {
-            version = true;
-        } else if (name == "-v" or name == "--verbose") {
-            verbose = true;
-        } else if (name == "--shout") {
-            shout = true;
+        if (!ended and is_sync_switch(arg)) {
+            sync_text = arg.slice(1);
         } else {
-            return Err(i"unknown option '{$ name $}'");
+            rest.push(arg);
         }
     }
 
+    let parsed = match parse_switches(rest, fc_switches()) {
+        Ok(p) => p,
+        Err(e) => {
+            return Err(MSG_INVALID_SWITCH);
+        },
+    };
+
+    var sync_lines = DEFAULT_SYNC_LINES;
+    if (sync_text.len() > 0) {
+        let n = parse_int_value(sync_text) ?? 0;
+        if (n < 1) {
+            return Err(MSG_INVALID_SWITCH);
+        }
+        sync_lines = n;
+    }
+
+    var buffer_lines = DEFAULT_BUFFER_LINES;
+    match switch_value(parsed, "LB") {
+        Some(v) => {
+            let n = parse_int_value(v) ?? 0;
+            if (n < 1 or v.startsWith("-") or v.startsWith("+")) {
+                return Err(MSG_INVALID_SWITCH);
+            }
+            buffer_lines = n;
+        },
+        None => {},
+    }
+
     return Ok(Options(
-        command = command,
-        operands = operands,
-        help = help,
-        version = version,
-        verbose = verbose,
-        shout = shout,
-        greeting = greeting,
+        help = parsed.help,
+        version = parsed.version,
+        mode = mode_of(parsed),
+        abbreviate = has_switch(parsed, "A"),
+        ignore_case = has_switch(parsed, "C"),
+        numbers = has_switch(parsed, "N"),
+        keep_tabs = has_switch(parsed, "T"),
+        unicode = has_switch(parsed, "U"),
+        white = has_switch(parsed, "W"),
+        buffer_lines = buffer_lines,
+        sync_lines = sync_lines,
+        operands = parsed.operands,
     ));
 }

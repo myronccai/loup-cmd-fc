@@ -1,0 +1,18 @@
+@mode(host.dual)
+
+# The result of comparing one pair of files: the lines fc prints after
+# `Comparing files A and B` (each without its line end), and whether the
+# files differ. Built only through make_report(): a struct literal in another
+# module gets its fields wrong in native builds of Loup 1.26.0.
+
+pub struct Report {
+    pub lines: list[string];
+    pub different: bool;
+}
+
+pub func make_report(lines: list[string], different: bool): Report {
+    return Report(lines = lines, different = different);
+}
+
+# fc's message when two files compare equal.
+pub const MSG_NO_DIFFERENCES: string = "FC: no differences encountered";

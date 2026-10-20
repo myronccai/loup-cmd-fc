@@ -1,0 +1,45 @@
+@mode(host.dual)
+
+from debug.assert import (expect, expectEq);
+from commands.lines import (split_lines, expand_tabs, compress_white, line_key, is_utf16le,
+    decode_utf16le);
+
+func test_split_lines(): void {
+    expectEq(split_lines("").len(), 0, "empty");
+    expectEq(split_lines("a\nb\n").join("|"), "a|b", "trailing newline");
+    expectEq(split_lines("a\nb").join("|"), "a|b", "no final newline");
+    expectEq(split_lines("a\r\nb\r\n").join("|"), "a|b", "CRLF");
+    expectEq(split_lines("\n\n").join("|"), "|", "two empty lines");
+    expectEq(split_lines("a\rb\n").join("|"), "a\rb", "lone CR stays");
+}
+
+func test_expand_tabs(): void {
+    expectEq(expand_tabs("a\tb"), "a       b", "to column 8");
+    expectEq(expand_tabs("\tx"), "        x", "leading tab");
+    expectEq(expand_tabs("1234567\tx"), "1234567 x", "one space");
+    expectEq(expand_tabs("12345678\tx"), "12345678        x", "full stop");
+    expectEq(expand_tabs("plain"), "plain", "no tab");
+}
+
+func test_compress_white(): void {
+    expectEq(compress_white("  a   b\t\tc  "), "a b c", "runs and ends");
+    expectEq(compress_white("abc"), "abc", "nothing to do");
+    expectEq(compress_white(" \t "), "", "only blanks");
+}
+
+func test_line_key(): void {
+    expectEq(line_key("Good  Day ", false, false), "Good  Day ", "unchanged");
+    expectEq(line_key("Good  Day ", true, false), "GOOD  DAY ", "/C");
+    expectEq(line_key("Good  Day ", false, true), "Good Day", "/W");
+    expectEq(line_key("Good  Day ", true, true), "GOOD DAY", "/C /W");
+}
+
+func test_utf16(): void {
+    let with_bom = b"\xff\xfeH\x00i\x00";
+    expect(is_utf16le(with_bom), "BOM");
+    expectEq(decode_utf16le(with_bom), "Hi", "with BOM");
+    expectEq(decode_utf16le(b"O\x00K\x00\n\x00"), "OK\n", "without BOM");
+    expectEq(decode_utf16le(b"\xe9\x00"), "\u{e9}", "Latin-1 range");
+    expectEq(decode_utf16le(b"\x3d\xd8\x00\xde"), "\u{1f600}", "surrogate pair");
+    expectEq(decode_utf16le(b"\x00\xd8x\x00"), "\u{fffd}x", "lone surrogate");
+}

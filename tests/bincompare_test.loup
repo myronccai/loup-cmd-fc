@@ -1,0 +1,44 @@
+@mode(host.dual)
+
+from debug.assert import (expect, expectEq);
+from commands.bincompare import (compare_bytes, hex_byte, hex_offset, is_binary_name, msg_longer);
+
+func test_hex(): void {
+    expectEq(hex_byte(0), "00", "0");
+    expectEq(hex_byte(10), "0A", "10");
+    expectEq(hex_byte(255), "FF", "255");
+    expectEq(hex_offset(0), "00000000", "offset 0");
+    expectEq(hex_offset(4000000), "003D0900", "offset 4000000");
+    expectEq(hex_offset(4294967296), "100000000", "beyond 32 bits");
+}
+
+func test_identical(): void {
+    let r = compare_bytes(b"abc", b"abc", "a.bin", "B.BIN");
+    expect(!r.different, "same");
+    expectEq(r.lines.join("|"), "FC: no differences encountered|", "message and blank line");
+    expect(!compare_bytes(b"", b"", "a", "b").different, "both empty");
+}
+
+func test_differing_bytes(): void {
+    let r = compare_bytes(b"ab\x00c", b"aX\x00\xff", "a.bin", "B.BIN");
+    expect(r.different, "different");
+    expectEq(r.lines.join("|"), "00000001: 62 58|00000003: 63 FF|", "offsets and bytes");
+}
+
+func test_longer(): void {
+    let r = compare_bytes(b"abcd", b"ab", "a.bin", "B.BIN");
+    expectEq(r.lines.join("|"), "FC: a.bin longer than B.BIN|", "first longer");
+    let s = compare_bytes(b"aX", b"abcd", "a.bin", "B.BIN");
+    expectEq(s.lines.join("|"), "00000001: 58 62|FC: B.BIN longer than a.bin|", "second longer");
+    expectEq(msg_longer("x", "y"), "FC: x longer than y", "message");
+}
+
+func test_binary_names(): void {
+    expect(is_binary_name("prog.exe"), ".exe");
+    expect(is_binary_name("sub\\LIB.Obj"), ".Obj");
+    expect(is_binary_name("a/b/c.BIN"), ".BIN");
+    expect(is_binary_name("x.com") and is_binary_name("x.sys") and is_binary_name("x.lib"), "others");
+    expect(!is_binary_name("a.txt"), ".txt");
+    expect(!is_binary_name("exe"), "no extension");
+    expect(!is_binary_name("bin.d/readme"), "dot in a directory");
+}

@@ -1,25 +1,41 @@
 @mode(host.dual)
 
 # Exit statuses of the whole command line. These tests print the program's
-# normal output and error messages.
+# normal output.
 
 from debug.assert import (expectEq);
-from appinfo import (EXIT_OK, EXIT_USAGE);
+from io.fs import (createDir, writeText, removeDir, isDir);
+from appinfo import (EXIT_SAME, EXIT_DIFFERENT, EXIT_CANNOT_OPEN, EXIT_SYNTAX);
 from cli.app import (run);
 
-func test_version_succeeds(): void {
-    expectEq(run(["--version"]), EXIT_OK, "--version");
+const ROOT: string = "build/tmp/fc_app";
+
+func test_version_and_help(): void {
+    expectEq(run(["--version"]), EXIT_SAME, "--version");
+    expectEq(run(["/?"]), EXIT_SAME, "/?");
 }
 
-func test_hello_succeeds(): void {
-    expectEq(run(["hello", "tests"]), EXIT_OK, "hello NAME");
-}
-
-func test_unknown_command_is_usage_error(): void {
-    expectEq(run(["bogus"]), EXIT_USAGE, "unknown command");
-}
-
-func test_missing_command_is_usage_error(): void {
+func test_syntax_errors(): void {
     let none: list[string] = [];
-    expectEq(run(none), EXIT_USAGE, "no command");
+    expectEq(run(none), EXIT_SYNTAX, "no operand");
+    expectEq(run(["a.txt"]), EXIT_SYNTAX, "one operand");
+    expectEq(run(["a", "b", "c"]), EXIT_SYNTAX, "three operands");
+    expectEq(run(["/LB0", "a", "b"]), EXIT_SYNTAX, "bad /LB");
+}
+
+func test_compare(): void {
+    if (isDir(ROOT)) {
+        removeDir(ROOT);
+    }
+    createDir(ROOT);
+    writeText(ROOT + "/a.txt", "one\ntwo\n");
+    writeText(ROOT + "/b.txt", "one\ntwo\n");
+    writeText(ROOT + "/c.txt", "one\nTWO\n");
+    expectEq(run([ROOT + "\\a.txt", ROOT + "/b.txt"]), EXIT_SAME, "same");
+    expectEq(run([ROOT + "/a.txt", ROOT + "/c.txt"]), EXIT_DIFFERENT, "different");
+    expectEq(run(["/C", ROOT + "/a.txt", ROOT + "/c.txt"]), EXIT_SAME, "/C");
+    expectEq(run(["/B", ROOT + "/a.txt", ROOT + "/c.txt"]), EXIT_DIFFERENT, "/B");
+    expectEq(run([ROOT + "/a.txt", ROOT + "/missing.txt"]), EXIT_CANNOT_OPEN, "missing");
+    expectEq(run([ROOT + "/*.txt", ROOT + "/a.txt"]), EXIT_DIFFERENT, "wildcard");
+    removeDir(ROOT);
 }

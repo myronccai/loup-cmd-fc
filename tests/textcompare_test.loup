@@ -1,0 +1,155 @@
+@mode(host.dual)
+
+# fc's text comparison and resynchronisation. Each case compares two texts
+# and checks every line fc prints after `Comparing files`.
+
+from debug.assert import (expect, expectEq);
+from cli.args import (Options, default_options);
+from commands.textcompare import (prepare_text, compare_text, find_resync, format_line,
+    MSG_RESYNC_FAILED);
+
+func defaults(): Options {
+    let none: list[string] = [];
+    return default_options(none);
+}
+
+func run_with(a: string, b: string, opts: Options): string {
+    let f1 = prepare_text("a.txt", a, opts);
+    let f2 = prepare_text("B.TXT", b, opts);
+    return compare_text(f1, f2, opts).lines.join("\n");
+}
+
+func run(a: string, b: string): string {
+    return run_with(a, b, defaults());
+}
+
+func test_identical(): void {
+    expectEq(run("1\n2\n", "1\n2\n"), "FC: no differences encountered\n", "same");
+    expectEq(run("", ""), "FC: no differences encountered\n", "both empty");
+    expectEq(run("1\r\n2\r\n", "1\n2"), "FC: no differences encountered\n", "line ends ignored");
+    let f1 = prepare_text("a", "x\n", defaults());
+    expect(!compare_text(f1, f1, defaults()).different, "not different");
+}
+
+func test_changed_line(): void {
+    expectEq(run("1\n2\n3\n4\n5\n", "1\nX\n3\n4\n5\n"),
+        "***** a.txt\n1\n2\n3\n***** B.TXT\n1\nX\n3\n*****\n", "context before and resync line after");
+}
+
+func test_inserted_line(): void {
+    expectEq(run("1\n2\n3\n4\n", "1\n2\nnew\n3\n4\n"),
+        "***** a.txt\n2\n3\n***** B.TXT\n2\nnew\n3\n*****\n", "insertion");
+}
+
+func test_deleted_line(): void {
+    expectEq(run("1\n2\nold\n3\n4\n", "1\n2\n3\n4\n"),
+        "***** a.txt\n2\nold\n3\n***** B.TXT\n2\n3\n*****\n", "deletion");
+}
+
+func test_difference_at_start(): void {
+    expectEq(run("X\n2\n3\n", "Y\n2\n3\n"),
+        "***** a.txt\nX\n2\n***** B.TXT\nY\n2\n*****\n", "no context line");
+}
+
+func test_difference_at_end(): void {
+    expectEq(run("1\n2\n3\n", "1\n2\nZ\n"),
+        "***** a.txt\n2\n3\n***** B.TXT\n2\nZ\n*****\n", "runs to the end");
+}
+
+func test_one_file_longer(): void {
+    expectEq(run("1\n2\n", "1\n2\n3\n4\n"),
+        "***** a.txt\n2\n***** B.TXT\n2\n3\n4\n*****\n", "extra lines");
+    expectEq(run("", "a\n"), "***** a.txt\n***** B.TXT\na\n*****\n", "empty against one line");
+}
+
+func test_too_few_matching_lines_are_differences(): void {
+    # Only one line (3) matches before the end: fewer than the 2 needed.
+    expectEq(run("1\n2\n3\n", "1\nX\n3\n"),
+        "***** a.txt\n1\n2\n3\n***** B.TXT\n1\nX\n3\n*****\n", "short match at the end");
+    # 3 alone between differences does not resync; 5 6 does.
+    expectEq(run("1\n2\n3\n4\n5\n6\n", "1\nA\n3\nB\n5\n6\n"),
+        "***** a.txt\n1\n2\n3\n4\n5\n***** B.TXT\n1\nA\n3\nB\n5\n*****\n", "one block");
+}
+
+func test_two_blocks(): void {
+    expectEq(run("1\n2\n3\n4\n5\n6\n7\n", "1\nA\n3\n4\n5\nB\n7\n"),
+        "***** a.txt\n1\n2\n3\n***** B.TXT\n1\nA\n3\n*****\n\n"
+        + "***** a.txt\n5\n6\n7\n***** B.TXT\n5\nB\n7\n*****\n", "two blocks");
+}
+
+func test_sync_lines(): void {
+    var opts = defaults();
+    opts.sync_lines = 1;
+    expectEq(run_with("1\n2\n3\n4\n5\n6\n", "1\nA\n3\nB\n5\n6\n", opts),
+        "***** a.txt\n1\n2\n3\n***** B.TXT\n1\nA\n3\n*****\n\n"
+        + "***** a.txt\n3\n4\n5\n***** B.TXT\n3\nB\n5\n*****\n", "/1 resyncs on one line");
+    opts.sync_lines = 3;
+    expectEq(run_with("1\n2\n3\n4\n5\n", "1\nX\n3\n4\n5\n", opts),
+        "***** a.txt\n1\n2\n3\n***** B.TXT\n1\nX\n3\n*****\n", "/3: 3 4 5 match");
+    expectEq(run_with("1\n2\n3\n4\n", "1\nX\n3\n4\n", opts),
+        "***** a.txt\n1\n2\n3\n4\n***** B.TXT\n1\nX\n3\n4\n*****\n", "/3: 3 4 are too few");
+}
+
+func test_nearest_resync_first(): void {
+    # 2 3 could match two places; the nearest one wins.
+    let keys1 = ["a", "x", "2", "3", "y", "2", "3"];
+    let keys2 = ["a", "2", "3", "q", "q", "2", "3"];
+    let found = find_resync(keys1, keys2, 1, 1, 100, 2);
+    expectEq(found[0], 2, "x");
+    expectEq(found[1], 1, "y");
+    let none = find_resync(keys1, ["z", "z"], 1, 1, 100, 2);
+    expectEq(none[0], -1, "no resync");
+}
+
+func test_buffer_limit(): void {
+    var opts = defaults();
+    opts.buffer_lines = 3;
+    let a = "1\n2\n3\n4\n5\n6\n7\n8\n9\n";
+    let b = "1\na\nb\nc\nd\n6\n7\n8\n9\n";
+    expectEq(run_with(a, b, opts),
+        MSG_RESYNC_FAILED + "\n***** a.txt\n1\n2\n3\n4\n***** B.TXT\n1\na\nb\nc\n*****\n", "resync failed");
+    opts.buffer_lines = 4;
+    expectEq(run_with(a, b, opts),
+        "***** a.txt\n1\n2\n3\n4\n5\n6\n***** B.TXT\n1\na\nb\nc\nd\n6\n*****\n", "four lines fit");
+}
+
+func test_abbreviated(): void {
+    var opts = defaults();
+    opts.abbreviate = true;
+    expectEq(run_with("1\n2\n3\n4\n5\n6\n", "1\nA\nB\nC\n5\n6\n", opts),
+        "***** a.txt\n1\n...\n5\n***** B.TXT\n1\n...\n5\n*****\n", "/A");
+    expectEq(run_with("1\n2\n", "1\n3\n", opts),
+        "***** a.txt\n1\n2\n***** B.TXT\n1\n3\n*****\n", "two lines are not shortened");
+}
+
+func test_line_numbers(): void {
+    var opts = defaults();
+    opts.numbers = true;
+    expectEq(run_with("1\n2\n3\n4\n", "1\n2\nnew\n3\n4\n", opts),
+        "***** a.txt\n    2:  2\n    3:  3\n***** B.TXT\n    2:  2\n    3:  new\n    4:  3\n*****\n",
+        "/N");
+    expectEq(format_line(["x"], 0, true), "    1:  x", "format");
+}
+
+func test_ignore_case_and_white(): void {
+    var opts = defaults();
+    expect(compare_text(prepare_text("a", "Good  Day\n", opts), prepare_text("b", "good day\n", opts),
+        opts).different, "different by default");
+    opts.ignore_case = true;
+    opts.white = true;
+    expectEq(run_with(" Good \t Day\n", "good day\n", opts),
+        "FC: no differences encountered\n", "/C /W");
+    expectEq(run_with("A\nb\n", "a\nX\n", opts), "***** a.txt\nA\nb\n***** B.TXT\na\nX\n*****\n",
+        "shown as they are");
+}
+
+func test_tabs(): void {
+    var opts = defaults();
+    expectEq(run_with("a\tb\n", "a       b\n", opts), "FC: no differences encountered\n",
+        "tabs expanded by default");
+    expectEq(run_with("x\n\ty\n", "z\n\ty\n", opts),
+        "***** a.txt\nx\n        y\n***** B.TXT\nz\n        y\n*****\n", "shown expanded");
+    opts.keep_tabs = true;
+    expectEq(run_with("a\tb\n", "a       b\n", opts),
+        "***** a.txt\na\tb\n***** B.TXT\na       b\n*****\n", "/T");
+}

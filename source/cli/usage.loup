@@ -1,28 +1,30 @@
 @mode(host.dual)
 
-from appinfo import (APP_NAME, APP_VERSION, APP_SUMMARY);
-from cli.args import (DEFAULT_GREETING);
+from appinfo import (APP_NAME, APP_VERSION);
 
+# The text of `fc /?`: the command's syntax and a short line per switch.
 pub func usage(): string {
     let lines = [
-        i"usage: {$ APP_NAME $} [OPTIONS] COMMAND [ARGS...]",
+        "Compares two files or sets of files and shows the differences.",
         "",
-        APP_SUMMARY,
+        "FC [/A] [/C] [/L] [/LBn] [/N] [/OFF[LINE]] [/T] [/U] [/W] [/nnnn] file1 file2",
+        "FC /B file1 file2",
         "",
-        "Commands:",
-        "  hello [NAME]          Print a greeting (NAME defaults to 'world')",
-        "  help                  Show this help",
-        "",
-        "Options:",
-        i"  -g, --greeting TEXT   Greeting used by 'hello' (default: {$ DEFAULT_GREETING $})",
-        "      --shout           Print the greeting in upper case",
-        "  -v, --verbose         Print diagnostic messages to stderr",
-        "  -h, --help            Show this help and exit",
-        "  -V, --version         Show the version and exit",
+        "  /A      Show only the first and last line of each run of differences.",
+        "  /B      Compare byte by byte.",
+        "  /C      Ignore case.",
+        "  /L      Compare as text.",
+        "  /LBn    Give up after n consecutive differing lines (default 100).",
+        "  /N      Show line numbers.",
+        "  /OFF    Accepted; there is no offline attribute.",
+        "  /T      Do not expand tabs.",
+        "  /U      Read the files as UTF-16LE text.",
+        "  /W      Compress runs of spaces and tabs.",
+        "  /nnnn   Lines that must match to resynchronise (default 2).",
     ];
     return lines.join("\n");
 }
 
 pub func version_line(): string {
-    return i"{$ APP_NAME $} {$ APP_VERSION $}";
+    return i"{$ APP_NAME $} (loup-cmd-{$ APP_NAME $}) {$ APP_VERSION $}";
 }

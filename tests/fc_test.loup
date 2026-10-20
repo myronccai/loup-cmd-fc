@@ -1,0 +1,85 @@
+@mode(host.dual)
+
+# Pairing the operands: wildcards, directories and name templates.
+
+from debug.assert import (expect, expectEq);
+from io.fs import (createDir, writeText, removeDir, isDir);
+from cli.args import (Options, default_options, MODE_BINARY, MODE_TEXT);
+from commands.fc import (Pair, apply_template, second_path, plan_pairs, binary_pair, msg_cannot_open);
+
+const ROOT: string = "build/tmp/fc_pairs";
+
+func fixture(): void {
+    if (isDir(ROOT)) {
+        removeDir(ROOT);
+    }
+    createDir(ROOT + "/old");
+    writeText(ROOT + "/a.txt", "a\n");
+    writeText(ROOT + "/b.txt", "b\n");
+    writeText(ROOT + "/c.log", "c\n");
+    writeText(ROOT + "/old/a.txt", "a\n");
+}
+
+func test_apply_template(): void {
+    expectEq(apply_template("*.bak", "a.txt"), "a.bak", "*.bak");
+    expectEq(apply_template("*", "a.txt"), "a.txt", "*");
+    expectEq(apply_template("*.*", "a.txt"), "a.txt", "*.*");
+    expectEq(apply_template("x*.txt", "abc.log"), "xbc.txt", "a literal replaces a character");
+    expectEq(apply_template("x*.txt", "a.log"), "x.txt", "x* on a one-letter name");
+    expectEq(apply_template("?x*.*", "abc.txt"), "axc.txt", "?x*");
+    expectEq(apply_template("*.", "a.txt"), "a", "*. drops the extension");
+    expectEq(apply_template("new.*", "a.tar.gz"), "new.gz", "last dot");
+    expectEq(apply_template("*.old", "README"), "README.old", "no extension in the source");
+}
+
+func test_second_path(): void {
+    fixture();
+    expectEq(second_path(ROOT + "\\old", "x/a.txt"), ROOT + "/old/a.txt", "a directory");
+    expectEq(second_path("new\\", "a.txt"), "new/a.txt", "trailing separator");
+    expectEq(second_path("sub\\*.bak", "x/a.txt"), "sub/a.bak", "template in a directory");
+    expectEq(second_path("b.txt", "a.txt"), "b.txt", "a plain name");
+    expectEq(second_path("d\\b.txt", "a.txt"), "d/b.txt", "backslashes");
+    removeDir(ROOT);
+}
+
+func test_plan_literal(): void {
+    let pairs = plan_pairs("x\\a.txt", "y/b.txt");
+    expectEq(pairs.len(), 1, "one pair");
+    expectEq(pairs[0].path1, "x/a.txt", "path1");
+    expectEq(pairs[0].path2, "y/b.txt", "path2");
+    expectEq(pairs[0].name1, "x\\a.txt", "first name as typed");
+    expectEq(pairs[0].name2, "Y\\B.TXT", "second name in upper case");
+    expect(!pairs[0].missing, "not missing");
+}
+
+func test_plan_wildcards(): void {
+    fixture();
+    let pairs = plan_pairs(ROOT + "/*.txt", ROOT + "/old");
+    expectEq(pairs.len(), 2, "two files");
+    expectEq(pairs[0].path1, ROOT + "/a.txt", "a");
+    expectEq(pairs[0].path2, ROOT + "/old/a.txt", "old a");
+    expectEq(pairs[1].path2, ROOT + "/old/b.txt", "old b");
+    let renamed = plan_pairs(ROOT + "\\*.txt", "*.log");
+    expectEq(renamed[1].path2, "b.log", "template");
+    let none = plan_pairs(ROOT + "/*.none", "x");
+    expectEq(none.len(), 1, "one entry");
+    expect(none[0].missing, "missing");
+    removeDir(ROOT);
+}
+
+func test_binary_pair(): void {
+    let none: list[string] = [];
+    var opts = default_options(none);
+    let exe = plan_pairs("a.exe", "b.exe")[0];
+    let txt = plan_pairs("a.txt", "b.txt")[0];
+    expect(binary_pair(exe, opts), ".exe is binary");
+    expect(!binary_pair(txt, opts), ".txt is text");
+    opts.mode = MODE_TEXT;
+    expect(!binary_pair(exe, opts), "/L");
+    opts.mode = MODE_BINARY;
+    expect(binary_pair(txt, opts), "/B");
+}
+
+func test_cannot_open(): void {
+    expectEq(msg_cannot_open("X.TXT"), "FC: cannot open X.TXT - No such file or folder", "message");
+}

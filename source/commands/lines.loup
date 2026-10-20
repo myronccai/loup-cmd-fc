@@ -1,0 +1,118 @@
+@mode(host.dual)
+
+# Turning file contents into the lines fc shows and the keys it compares.
+#
+# - Lines end at LF; a CR before the LF is dropped, so CRLF and LF files
+#   compare equal (fc reads in text mode). A last line without a line end
+#   is still a line.
+# - Tabs are expanded to spaces (stops every 8 columns) unless /T, both for
+#   display and for comparison, as fc does.
+# - /W compresses each run of spaces and tabs to one space and ignores them
+#   at the start and end of a line; /C ignores case. Both only change the
+#   comparison key: the lines are shown as they are.
+
+# The lines of a text, without their line ends.
+pub func split_lines(text: string): list[string] {
+    var out: list[string] = [];
+    if (text.len() == 0) {
+        return out;
+    }
+    let parts = text.split("\n");
+    let n = parts.len();
+    for (k in 0..n) {
+        let part = parts[k];
+        if (k == n - 1 and part.len() == 0) {
+            break;
+        }
+        if (part.endsWith("\r")) {
+            out.push(part.slice(0, part.len() - 1));
+        } else {
+            out.push(part);
+        }
+    }
+    return out;
+}
+
+# The line with each tab replaced by spaces up to the next multiple of 8.
+pub func expand_tabs(line: string): string {
+    if (line.index_of("\t") < 0) {
+        return line;
+    }
+    var parts: list[string] = [];
+    var col = 0;
+    for (ch in line) {
+        if (ch == "\t") {
+            let width = 8 - (col % 8);
+            parts.push("        ".slice(0, width));
+            col += width;
+        } else {
+            parts.push(ch);
+            col += 1;
+        }
+    }
+    return parts.join("");
+}
+
+# The line with runs of spaces and tabs reduced to one space, and none at
+# either end (/W).
+pub func compress_white(line: string): string {
+    if (line.index_of(" ") < 0 and line.index_of("\t") < 0) {
+        return line;
+    }
+    var parts: list[string] = [];
+    var pending = false;
+    for (ch in line) {
+        if (ch == " " or ch == "\t") {
+            if (parts.len() > 0) {
+                pending = true;
+            }
+        } else {
+            if (pending) {
+                parts.push(" ");
+                pending = false;
+            }
+            parts.push(ch);
+        }
+    }
+    return parts.join("");
+}
+
+# What fc compares for a line it shows as `line`.
+pub func line_key(line: string, ignore_case: bool, white: bool): string {
+    var key = line;
+    if (white) {
+        key = compress_white(key);
+    }
+    if (ignore_case) {
+        key = key.toUpperCase();
+    }
+    return key;
+}
+
+# Whether the bytes start with the UTF-16LE byte order mark FF FE.
+pub func is_utf16le(data: bytes): bool {
+    return data.len() >= 2 and data[0] == 0xFF and data[1] == 0xFE;
+}
+
+# Decodes UTF-16LE text (/U), after its byte order mark if there is one. A
+# lone surrogate becomes U+FFFD; an odd final byte is dropped.
+pub func decode_utf16le(data: bytes): string {
+    var parts: list[string] = [];
+    var i = if (is_utf16le(data)) { 2 } else { 0 };
+    while (i + 1 < data.len()) {
+        var unit = data[i] | (data[i + 1] << 8);
+        i += 2;
+        if (unit >= 0xD800 and unit <= 0xDBFF and i + 1 < data.len()) {
+            let low = data[i] | (data[i + 1] << 8);
+            if (low >= 0xDC00 and low <= 0xDFFF) {
+                unit = 0x10000 + ((unit - 0xD800) << 10) + (low - 0xDC00);
+                i += 2;
+            }
+        }
+        if (unit >= 0xD800 and unit <= 0xDFFF) {
+            unit = 0xFFFD;
+        }
+        parts.push(str(char.of(unit)));
+    }
+    return parts.join("");
+}

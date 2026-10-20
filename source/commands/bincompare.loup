@@ -1,0 +1,86 @@
+@mode(host.dual)
+
+# fc /B: a byte-by-byte comparison. Every differing byte is one line,
+# `OFFSET: AA BB` (the offset in eight hexadecimal digits, then the byte of
+# each file); a longer file is reported once the shorter one ends.
+
+from commands.report import (Report, make_report, MSG_NO_DIFFERENCES);
+
+const HEX: string = "0123456789ABCDEF";
+
+# The file extensions fc compares in binary mode unless /L is given.
+const BINARY_EXTENSIONS: string = "|EXE|COM|SYS|OBJ|LIB|BIN|";
+
+func hex_digit(v: int): string {
+    return HEX.slice(v, v + 1);
+}
+
+# A byte as two upper-case hexadecimal digits.
+pub func hex_byte(v: int): string {
+    return hex_digit((v >> 4) & 15) + hex_digit(v & 15);
+}
+
+# An offset as eight upper-case hexadecimal digits (more when it needs them).
+pub func hex_offset(v: int): string {
+    var digits: list[string] = [];
+    var rest = v;
+    while (rest > 0 or digits.len() < 8) {
+        digits.push(hex_digit(rest & 15));
+        rest = rest >> 4;
+    }
+    var out: list[string] = [];
+    var k = digits.len() - 1;
+    while (k >= 0) {
+        out.push(digits[k]);
+        k -= 1;
+    }
+    return out.join("");
+}
+
+# fc's line when one file is longer than the other.
+pub func msg_longer(longer: string, shorter: string): string {
+    return "FC: " + longer + " longer than " + shorter;
+}
+
+# Whether fc compares a file in binary mode by default: .EXE, .COM, .SYS,
+# .OBJ, .LIB and .BIN files, in any case.
+pub func is_binary_name(path: string): bool {
+    let slash = path.replace("\\", "/");
+    var base = slash;
+    let parts = slash.split("/");
+    if (parts.len() > 0) {
+        base = parts[parts.len() - 1];
+    }
+    let dot_parts = base.split(".");
+    if (dot_parts.len() < 2) {
+        return false;
+    }
+    let ext = dot_parts[dot_parts.len() - 1].toUpperCase();
+    return ext.len() > 0 and ext.index_of("|") < 0 and BINARY_EXTENSIONS.index_of("|" + ext + "|") >= 0;
+}
+
+# Compares two byte strings and returns what fc /B prints for them.
+pub func compare_bytes(a: bytes, b: bytes, name1: string, name2: string): Report {
+    var out: list[string] = [];
+    var different = false;
+    let common = if (a.len() < b.len()) { a.len() } else { b.len() };
+    for (k in 0..common) {
+        let x = a[k];
+        let y = b[k];
+        if (x != y) {
+            different = true;
+            out.push(hex_offset(k) + ": " + hex_byte(x) + " " + hex_byte(y));
+        }
+    }
+    if (a.len() > b.len()) {
+        different = true;
+        out.push(msg_longer(name1, name2));
+    } else if (b.len() > a.len()) {
+        different = true;
+        out.push(msg_longer(name2, name1));
+    } else if (!different) {
+        out.push(MSG_NO_DIFFERENCES);
+    }
+    out.push("");
+    return make_report(out, different);
+}

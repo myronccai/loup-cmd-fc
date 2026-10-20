@@ -1,0 +1,194 @@
+@mode(host.dual)
+
+# fc: compares two files, or two sets of files, and prints the differences.
+#
+# The first operand may name several files with `*` and `?`. The second
+# names the file to compare each of them with: a file, a directory (the file
+# of the same name in it), or a name with wildcards that is built from the
+# first file's name (`fc *.txt *.bak` compares a.txt with a.bak).
+#
+# For each pair fc prints `Comparing files A and B` and then the result of a
+# text comparison (commands/textcompare.loup) or, with /B or for .EXE,
+# .COM, .SYS, .OBJ, .LIB and .BIN files, a binary one
+# (commands/bincompare.loup). Like Windows, it shows the first name as typed
+# and the second in upper case.
+
+from appinfo import (EXIT_SAME, EXIT_DIFFERENT, EXIT_CANNOT_OPEN, EXIT_SYNTAX);
+from cli.args import (Options, MODE_BINARY, MODE_TEXT, MSG_INSUFFICIENT, MSG_TOO_MANY);
+from commands.bincompare import (compare_bytes, is_binary_name);
+from commands.lines import (decode_utf16le);
+from commands.report import (Report);
+from commands.textcompare import (prepare_text, compare_text);
+from io.fs import (isDir, isFile);
+from win.paths import (display_path, fs_path, split_path, join_path, base_name,
+    strip_trailing_separators);
+from win.wildcard import (MATCH_FILES, expand, has_wildcards);
+
+# One comparison to make: the two files, as accessed and as printed. A pair
+# whose first operand matched nothing has `missing` set.
+pub struct Pair {
+    pub path1: string;     # fs form
+    pub path2: string;
+    pub name1: string;     # as printed
+    pub name2: string;
+    pub missing: bool;     # the first operand named no file
+}
+
+func make_pair(path1: string, path2: string): Pair {
+    return Pair(path1 = path1, path2 = path2, name1 = display_path(path1),
+        name2 = display_path(path2).toUpperCase(), missing = false);
+}
+
+func missing_pair(operand: string): Pair {
+    return Pair(path1 = "", path2 = "", name1 = display_path(operand), name2 = "", missing = true);
+}
+
+# The message when a file cannot be opened.
+pub func msg_cannot_open(name: string): string {
+    return "FC: cannot open " + name + " - No such file or folder";
+}
+
+# Splits a name at its last dot: [base, extension, "." or ""].
+func split_ext(name: string): list[string] {
+    var k = name.len() - 1;
+    while (k >= 0) {
+        if (name.slice(k, k + 1) == ".") {
+            return [name.slice(0, k), name.slice(k + 1), "."];
+        }
+        k -= 1;
+    }
+    return [name, "", ""];
+}
+
+# One part (base or extension) of a name built from a pattern: `?` takes
+# the source's character at that position, `*` the rest of the source, and
+# any other character is itself.
+func apply_part(pattern: string, source: string): string {
+    var out: list[string] = [];
+    var k = 0;
+    for (ch in pattern) {
+        if (ch == "*") {
+            if (k < source.len()) {
+                out.push(source.slice(k));
+            }
+            k = source.len();
+        } else if (ch == "?") {
+            if (k < source.len()) {
+                out.push(source.slice(k, k + 1));
+            }
+            k += 1;
+        } else {
+            out.push(ch);
+            k += 1;
+        }
+    }
+    return out.join("");
+}
+
+# The name a wildcard template gives a file name, part by part (base and
+# extension), the way DOS commands build target names: `*.bak` and `a.txt`
+# give `a.bak`; `?x*.*` and `abc.txt` give `axc.txt`. A template without a
+# dot applies to the whole name (`*` keeps it).
+pub func apply_template(pattern: string, name: string): string {
+    let t = split_ext(pattern);
+    if (t[2].len() == 0) {
+        return apply_part(pattern, name);
+    }
+    let s = split_ext(name);
+    let base = apply_part(t[0], s[0]);
+    let ext = apply_part(t[1], s[1]);
+    if (ext.len() == 0) {
+        return base;
+    }
+    return base + "." + ext;
+}
+
+# The second file of a pair, for the first file `path1` (fs form).
+pub func second_path(operand2: string, path1: string): string {
+    let p2 = fs_path(operand2);
+    if (p2.endsWith("/") or isDir(p2)) {
+        return join_path(strip_trailing_separators(p2), base_name(path1));
+    }
+    let parts = split_path(p2);
+    if (has_wildcards(parts.name)) {
+        return join_path(parts.dir, apply_template(parts.name, base_name(path1)));
+    }
+    return p2;
+}
+
+# The comparisons to make for the two operands, in order.
+pub func plan_pairs(operand1: string, operand2: string): list[Pair] {
+    var pairs: list[Pair] = [];
+    if (!has_wildcards(operand1)) {
+        let path1 = fs_path(operand1);
+        pairs.push(make_pair(path1, second_path(operand2, path1)));
+        return pairs;
+    }
+    let matches = expand(operand1, MATCH_FILES);
+    if (matches.len() == 0) {
+        pairs.push(missing_pair(operand1));
+    }
+    for (path1 in matches) {
+        pairs.push(make_pair(path1, second_path(operand2, path1)));
+    }
+    return pairs;
+}
+
+# Whether a pair is compared as binary.
+pub func binary_pair(pair: Pair, opts: Options): bool {
+    if (opts.mode == MODE_BINARY) {
+        return true;
+    }
+    if (opts.mode == MODE_TEXT) {
+        return false;
+    }
+    return is_binary_name(pair.path1) or is_binary_name(pair.path2);
+}
+
+func read_text_file(path: string, opts: Options): string {
+    if (opts.unicode) {
+        return decode_utf16le(readBytes(path));
+    }
+    return readText(path);
+}
+
+# Compares the two (existing) files of a pair.
+pub func compare_pair(pair: Pair, opts: Options): Report {
+    if (binary_pair(pair, opts)) {
+        return compare_bytes(readBytes(pair.path1), readBytes(pair.path2), pair.name1, pair.name2);
+    }
+    let f1 = prepare_text(pair.name1, read_text_file(pair.path1, opts), opts);
+    let f2 = prepare_text(pair.name2, read_text_file(pair.path2, opts), opts);
+    return compare_text(f1, f2, opts);
+}
+
+pub func run_fc(opts: Options): int {
+    if (opts.operands.len() < 2) {
+        printErr(MSG_INSUFFICIENT);
+        return EXIT_SYNTAX;
+    }
+    if (opts.operands.len() > 2) {
+        printErr(MSG_TOO_MANY);
+        return EXIT_SYNTAX;
+    }
+    var status = EXIT_SAME;
+    for (pair in plan_pairs(opts.operands[0], opts.operands[1])) {
+        if (pair.missing or !isFile(pair.path1)) {
+            printErr(msg_cannot_open(pair.name1));
+            status = EXIT_CANNOT_OPEN;
+            continue;
+        }
+        if (!isFile(pair.path2)) {
+            printErr(msg_cannot_open(pair.name2));
+            status = EXIT_CANNOT_OPEN;
+            continue;
+        }
+        println("Comparing files " + pair.name1 + " and " + pair.name2);
+        let report = compare_pair(pair, opts);
+        print(report.lines.join("\n") + "\n");
+        if (report.different and status == EXIT_SAME) {
+            status = EXIT_DIFFERENT;
+        }
+    }
+    return status;
+}
