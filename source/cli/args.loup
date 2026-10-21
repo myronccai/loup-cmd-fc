@@ -4,6 +4,9 @@
 # (win/switches.loup): `/A /B /C /L /LBn /N /OFF[LINE] /T /U /W /nnnn`, in
 # any case, with `/` or `-`. `/nnnn` (a number as the switch name) cannot be
 # declared to the shared parser, so parse_args takes those tokens out first.
+#
+# Runtime: host.dual. Compiled into the native binary build/fc by `make
+# build`; `loup run source/main.loup` interprets the same code.
 
 from win.switches import (SwitchArgs, SwitchSpec, flag, glued_value, parse_switches, has_switch,
     switch_value, parse_int_value);

@@ -3,6 +3,9 @@
 # fc /B: a byte-by-byte comparison. Every differing byte is one line,
 # `OFFSET: AA BB` (the offset in eight hexadecimal digits, then the byte of
 # each file); a longer file is reported once the shorter one ends.
+#
+# Runtime: host.dual. Compiled into the native binary build/fc by `make
+# build`; `loup run source/main.loup` interprets the same code.
 
 from commands.report import (Report, make_report, MSG_NO_DIFFERENCES);
 

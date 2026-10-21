@@ -26,6 +26,13 @@
 # of both files. When more than /LBn lines differ and the files go on, fc
 # gives up with
 # `Resync Failed.  Files are too different.` and shows what it had read.
+#
+# Runtime: host.dual. Compiled into the native binary build/fc by `make
+# build`; `loup run source/main.loup` interprets the same code.
+#
+# Structure: TextFile and prepare_text; output helpers (format_line, dump);
+# find_resync, the look-ahead; and compare_text, the main loop, which
+# alternates a run of matching lines with one block of differences.
 
 from cli.args import (Options);
 from commands.lines import (split_lines, expand_tabs, line_key);
@@ -111,6 +118,9 @@ func max_int(a: int, b: int): int {
 # At most `limit` differing lines are allowed on each side.
 pub func find_resync(keys1: list[string], keys2: list[string], i: int, j: int, limit: int,
     sync: int): list[int] {
+    # `s` is the total distance (lines skipped in both files) and `dx` the
+    # lines skipped in file 1, so candidates come nearest first and, at
+    # equal distance, with fewer lines of file 1 skipped.
     let span1 = min_int(limit, keys1.len() - i);
     let span2 = min_int(limit, keys2.len() - j);
     var s = 1;
@@ -157,6 +167,9 @@ pub func compare_text(f1: TextFile, f2: TextFile, opts: Options): Report {
         if (i >= n1 and j >= n2) {
             break;
         }
+        # A mismatch at lines i and j: find where the block of differences
+        # ends (one of three cases below), print it, and go on from the
+        # resync point.
         different = true;
         # The last matching line goes with the block, as context.
         let from1 = if (i > 0 and j > 0) { i - 1 } else { i };

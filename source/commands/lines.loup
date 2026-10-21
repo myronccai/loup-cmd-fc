@@ -10,6 +10,9 @@
 # - /W compresses each run of spaces and tabs to one space and ignores them
 #   at the start and end of a line; /C ignores case. Both only change the
 #   comparison key: the lines are shown as they are.
+#
+# Runtime: host.dual. Compiled into the native binary build/fc by `make
+# build`; `loup run source/main.loup` interprets the same code.
 
 # The lines of a text, without their line ends.
 pub func split_lines(text: string): list[string] {

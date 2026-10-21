@@ -1,7 +1,12 @@
 @mode(host.dual)
 
-# fc's text comparison and resynchronisation. Each case compares two texts
-# and checks every line fc prints after `Comparing files`.
+# Unit tests for fc's text comparison and resynchronisation
+# (commands.textcompare). Each case compares two texts and checks every
+# line fc prints after `Comparing files`.
+#
+# Runtime: host.dual, run by the test runner: `make test` interprets this file
+# with Stage0 (`loup-bootstrap test --no-parallel`, source/ on LOUPPATH), one
+# test per `func test_*()`. It is not part of the binary.
 
 from debug.assert import (expect, expectEq);
 from cli.args import (Options, default_options);

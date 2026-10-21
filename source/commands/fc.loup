@@ -12,6 +12,13 @@
 # .COM, .SYS, .OBJ, .LIB and .BIN files, a binary one
 # (commands/bincompare.loup). Like Windows, it shows the first name as typed
 # and the second in upper case.
+#
+# Runtime: host.dual. Compiled into the native binary build/fc by `make
+# build`; `loup run source/main.loup` interprets the same code.
+#
+# Structure: the Pair record; building second names from a wildcard template
+# (apply_template); planning the pairs (plan_pairs); choosing binary or text
+# and comparing one pair; and run_fc, which prints each pair's report.
 
 from appinfo import (EXIT_SAME, EXIT_DIFFERENT, EXIT_CANNOT_OPEN, EXIT_SYNTAX);
 from cli.args import (Options, MODE_BINARY, MODE_TEXT, MSG_INSUFFICIENT, MSG_TOO_MANY);

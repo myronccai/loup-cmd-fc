@@ -1,5 +1,12 @@
 @mode(host.dual)
 
+# Top level of fc: parse the arguments, handle /? and --version, run the
+# comparison and turn the outcome into fc's ERRORLEVEL.
+#
+# Runtime: host.dual. Compiled into the native binary build/fc by `make
+# build`; `loup run source/main.loup` interprets the same code. The unit tests
+# call run() directly.
+
 from appinfo import (EXIT_SAME, EXIT_CANNOT_OPEN, EXIT_SYNTAX);
 from cli.args import (parse_args);
 from cli.usage import (usage, version_line);

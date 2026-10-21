@@ -1,5 +1,12 @@
 @mode(host.dual)
 
+# Unit tests for fc's line handling (commands.lines): splitting, tabs, /W,
+# comparison keys and UTF-16LE decoding.
+#
+# Runtime: host.dual, run by the test runner: `make test` interprets this file
+# with Stage0 (`loup-bootstrap test --no-parallel`, source/ on LOUPPATH), one
+# test per `func test_*()`. It is not part of the binary.
+
 from debug.assert import (expect, expectEq);
 from commands.lines import (split_lines, expand_tabs, compress_white, line_key, is_utf16le,
     decode_utf16le);

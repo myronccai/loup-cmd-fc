@@ -1,5 +1,12 @@
 @mode(host.dual)
 
+# Unit tests for fc /B (commands.bincompare): hexadecimal output, equal,
+# differing and longer files, and the extensions compared as binary.
+#
+# Runtime: host.dual, run by the test runner: `make test` interprets this file
+# with Stage0 (`loup-bootstrap test --no-parallel`, source/ on LOUPPATH), one
+# test per `func test_*()`. It is not part of the binary.
+
 from debug.assert import (expect, expectEq);
 from commands.bincompare import (compare_bytes, hex_byte, hex_offset, is_binary_name, msg_longer);
 

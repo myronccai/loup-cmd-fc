@@ -1,5 +1,12 @@
 @mode(host.dual)
 
+# Unit tests for fc's argument parsing (cli.args): defaults, flags, /B and
+# /L, /LBn, the /nnnn switch and unknown `/x` operands.
+#
+# Runtime: host.dual, run by the test runner: `make test` interprets this file
+# with Stage0 (`loup-bootstrap test --no-parallel`, source/ on LOUPPATH), one
+# test per `func test_*()`. It is not part of the binary.
+
 from debug.assert import (expect, expectEq);
 from cli.args import (parse_args, is_sync_switch, fc_switches, MODE_AUTO, MODE_TEXT, MODE_BINARY,
     DEFAULT_BUFFER_LINES, DEFAULT_SYNC_LINES, MSG_INVALID_SWITCH);

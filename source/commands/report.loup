@@ -4,6 +4,9 @@
 # `Comparing files A and B` (each without its line end), and whether the
 # files differ. Built only through make_report(): a struct literal in another
 # module gets its fields wrong in native builds of Loup 1.26.0.
+#
+# Runtime: host.dual. Compiled into the native binary build/fc by `make
+# build`; `loup run source/main.loup` interprets the same code.
 
 pub struct Report {
     pub lines: list[string];
