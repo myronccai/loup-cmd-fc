@@ -11,7 +11,8 @@
 from debug.assert import (expect, expectEq);
 from io.fs import (createDir, writeText, removeDir, isDir);
 from cli.args import (Options, default_options, MODE_BINARY, MODE_TEXT);
-from commands.fc import (Pair, apply_template, second_path, plan_pairs, binary_pair, msg_cannot_open);
+from commands.fc import (Pair, apply_template, second_path, plan_pairs, binary_pair, msg_cannot_open,
+    split_ext);
 
 const ROOT: string = "build/tmp/fc_pairs";
 
@@ -24,6 +25,13 @@ func fixture(): void {
     writeText(ROOT + "/b.txt", "b\n");
     writeText(ROOT + "/c.log", "c\n");
     writeText(ROOT + "/old/a.txt", "a\n");
+}
+
+func test_split_ext(): void {
+    let (base, ext, dot) = split_ext("a.tar.gz");
+    expect(base == "a.tar" and ext == "gz" and dot, "the last dot splits");
+    let (name, none, no_dot) = split_ext("README");
+    expect(name == "README" and none == "" and !no_dot, "no extension");
 }
 
 func test_apply_template(): void {
@@ -75,15 +83,13 @@ func test_plan_wildcards(): void {
 
 func test_binary_pair(): void {
     let none: list[string] = [];
-    var opts = default_options(none);
+    let opts = default_options(none);
     let exe = plan_pairs("a.exe", "b.exe")[0];
     let txt = plan_pairs("a.txt", "b.txt")[0];
     expect(binary_pair(exe, opts), ".exe is binary");
     expect(!binary_pair(txt, opts), ".txt is text");
-    opts.mode = MODE_TEXT;
-    expect(!binary_pair(exe, opts), "/L");
-    opts.mode = MODE_BINARY;
-    expect(binary_pair(txt, opts), "/B");
+    expect(!binary_pair(exe, opts with (mode = MODE_TEXT)), "/L");
+    expect(binary_pair(txt, opts with (mode = MODE_BINARY)), "/B");
 }
 
 func test_cannot_open(): void {

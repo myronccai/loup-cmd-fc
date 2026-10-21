@@ -9,25 +9,25 @@ from appinfo import (APP_NAME, APP_VERSION);
 
 # The text of `fc /?`: the command's syntax and a short line per switch.
 pub func usage(): string {
-    let lines = [
-        "Compares two files or sets of files and shows the differences.",
-        "",
-        "FC [/A] [/C] [/L] [/LBn] [/N] [/OFF[LINE]] [/T] [/U] [/W] [/nnnn] file1 file2",
-        "FC /B file1 file2",
-        "",
-        "  /A      Show only the first and last line of each run of differences.",
-        "  /B      Compare byte by byte.",
-        "  /C      Ignore case.",
-        "  /L      Compare as text.",
-        "  /LBn    Give up after n consecutive differing lines (default 100).",
-        "  /N      Show line numbers.",
-        "  /OFF    Accepted; there is no offline attribute.",
-        "  /T      Do not expand tabs.",
-        "  /U      Read the files as UTF-16LE text.",
-        "  /W      Compress runs of spaces and tabs.",
-        "  /nnnn   Lines that must match to resynchronise (default 2).",
-    ];
-    return lines.join("\n");
+    let text = """
+    Compares two files or sets of files and shows the differences.
+
+    FC [/A] [/C] [/L] [/LBn] [/N] [/OFF[LINE]] [/T] [/U] [/W] [/nnnn] file1 file2
+    FC /B file1 file2
+
+      /A      Show only the first and last line of each run of differences.
+      /B      Compare byte by byte.
+      /C      Ignore case.
+      /L      Compare as text.
+      /LBn    Give up after n consecutive differing lines (default 100).
+      /N      Show line numbers.
+      /OFF    Accepted; there is no offline attribute.
+      /T      Do not expand tabs.
+      /U      Read the files as UTF-16LE text.
+      /W      Compress runs of spaces and tabs.
+      /nnnn   Lines that must match to resynchronise (default 2).
+    """;
+    return text;
 }
 
 pub func version_line(): string {

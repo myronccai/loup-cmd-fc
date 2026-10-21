@@ -29,13 +29,12 @@ pub func hex_offset(v: int): string {
     var rest = v;
     while (rest > 0 or digits.len() < 8) {
         digits.push(hex_digit(rest & 15));
-        rest = rest >> 4;
+        rest >>= 4;
     }
+    # The digits were collected least significant first.
     var out: list[string] = [];
-    var k = digits.len() - 1;
-    while (k >= 0) {
+    for (var k = digits.len() - 1; k >= 0; k -= 1) {
         out.push(digits[k]);
-        k -= 1;
     }
     return out.join("");
 }
@@ -48,17 +47,12 @@ pub func msg_longer(longer: string, shorter: string): string {
 # Whether fc compares a file in binary mode by default: .EXE, .COM, .SYS,
 # .OBJ, .LIB and .BIN files, in any case.
 pub func is_binary_name(path: string): bool {
-    let slash = path.replace("\\", "/");
-    var base = slash;
-    let parts = slash.split("/");
-    if (parts.len() > 0) {
-        base = parts[parts.len() - 1];
-    }
+    let base = path.replace("\\", "/").split("/")[-1];
     let dot_parts = base.split(".");
     if (dot_parts.len() < 2) {
         return false;
     }
-    let ext = dot_parts[dot_parts.len() - 1].toUpperCase();
+    let ext = dot_parts[-1].toUpperCase();
     return ext.len() > 0 and ext.index_of("|") < 0 and BINARY_EXTENSIONS.index_of("|" + ext + "|") >= 0;
 }
 

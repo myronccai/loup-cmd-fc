@@ -24,8 +24,8 @@
 # shown as differences. When the differences run to the end of both files,
 # or one file has ended, there is no resync point: the block holds the rest
 # of both files. When more than /LBn lines differ and the files go on, fc
-# gives up with
-# `Resync Failed.  Files are too different.` and shows what it had read.
+# gives up with `Resync Failed.  Files are too different.` and shows what
+# it had read.
 #
 # Runtime: host.dual. Compiled into the native binary build/fc by `make
 # build`; `loup run source/main.loup` interprets the same code.
@@ -35,6 +35,7 @@
 # alternates a run of matching lines with one block of differences.
 
 from cli.args import (Options);
+from core.string_utils import (padLeft);
 from commands.lines import (split_lines, expand_tabs, line_key);
 from commands.report import (Report, make_report, MSG_NO_DIFFERENCES);
 
@@ -74,19 +75,11 @@ func run_matches(keys1: list[string], keys2: list[string], x: int, y: int, count
     return true;
 }
 
-func pad_number(n: int): string {
-    var text = str(n);
-    while (text.len() < 5) {
-        text = " " + text;
-    }
-    return text;
-}
-
 # One line as fc prints it: with /N, the line number right-aligned in five
 # columns, a colon and two spaces.
 pub func format_line(shown: list[string], index: int, numbers: bool): string {
     if (numbers) {
-        return pad_number(index + 1) + ":  " + shown[index];
+        return padLeft(str(index + 1), 5, " ") + ":  " + shown[index];
     }
     return shown[index];
 }
@@ -114,10 +107,10 @@ func max_int(a: int, b: int): int {
     return if (a > b) { a } else { b };
 }
 
-# The resync point after a mismatch at lines i and j: [x, y], or [-1, -1].
+# The resync point after a mismatch at lines i and j: (x, y), or (-1, -1).
 # At most `limit` differing lines are allowed on each side.
 pub func find_resync(keys1: list[string], keys2: list[string], i: int, j: int, limit: int,
-    sync: int): list[int] {
+    sync: int): (int, int) {
     # `s` is the total distance (lines skipped in both files) and `dx` the
     # lines skipped in file 1, so candidates come nearest first and, at
     # equal distance, with fewer lines of file 1 skipped.
@@ -131,13 +124,13 @@ pub func find_resync(keys1: list[string], keys2: list[string], i: int, j: int, l
             let x = i + dx;
             let y = j + (s - dx);
             if (run_matches(keys1, keys2, x, y, sync)) {
-                return [x, y];
+                return (x, y);
             }
             dx += 1;
         }
         s += 1;
     }
-    return [-1, -1];
+    return (-1, -1);
 }
 
 # Compares two prepared files and returns what fc prints for them.
@@ -177,11 +170,11 @@ pub func compare_text(f1: TextFile, f2: TextFile, opts: Options): Report {
         var to1 = 0;
         var to2 = 0;
         var last = false;
-        let found = find_resync(keys1, keys2, i, j, limit, sync);
-        if (found[0] >= 0) {
+        let (sync1, sync2) = find_resync(keys1, keys2, i, j, limit, sync);
+        if (sync1 >= 0) {
             # The block ends with the first line of the resync point.
-            to1 = found[0] + 1;
-            to2 = found[1] + 1;
+            to1 = sync1 + 1;
+            to2 = sync2 + 1;
         } else if ((n1 - i <= limit and n2 - j <= limit) or i >= n1 or j >= n2) {
             # The differences run to the end of both files (or one file has
             # ended, so nothing can match again).
@@ -203,8 +196,8 @@ pub func compare_text(f1: TextFile, f2: TextFile, opts: Options): Report {
         if (last) {
             break;
         }
-        i = found[0];
-        j = found[1];
+        i = sync1;
+        j = sync2;
     }
     if (!different) {
         out.push(MSG_NO_DIFFERENCES);

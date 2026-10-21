@@ -55,16 +55,15 @@ pub func msg_cannot_open(name: string): string {
     return "FC: cannot open " + name + " - No such file or folder";
 }
 
-# Splits a name at its last dot: [base, extension, "." or ""].
-func split_ext(name: string): list[string] {
-    var k = name.len() - 1;
-    while (k >= 0) {
+# Splits a name at its last dot into (base, extension, has a dot):
+# `a.tar.gz` → (`a.tar`, `gz`, true); `README` → (`README`, ``, false).
+pub func split_ext(name: string): (string, string, bool) {
+    for (var k = name.len() - 1; k >= 0; k -= 1) {
         if (name.slice(k, k + 1) == ".") {
-            return [name.slice(0, k), name.slice(k + 1), "."];
+            return (name.slice(0, k), name.slice(k + 1), true);
         }
-        k -= 1;
     }
-    return [name, "", ""];
+    return (name, "", false);
 }
 
 # One part (base or extension) of a name built from a pattern: `?` takes
@@ -97,13 +96,13 @@ func apply_part(pattern: string, source: string): string {
 # give `a.bak`; `?x*.*` and `abc.txt` give `axc.txt`. A template without a
 # dot applies to the whole name (`*` keeps it).
 pub func apply_template(pattern: string, name: string): string {
-    let t = split_ext(pattern);
-    if (t[2].len() == 0) {
+    let (template_base, template_ext, template_dot) = split_ext(pattern);
+    if (!template_dot) {
         return apply_part(pattern, name);
     }
-    let s = split_ext(name);
-    let base = apply_part(t[0], s[0]);
-    let ext = apply_part(t[1], s[1]);
+    let (name_base, name_ext, _) = split_ext(name);
+    let base = apply_part(template_base, name_base);
+    let ext = apply_part(template_ext, name_ext);
     if (ext.len() == 0) {
         return base;
     }

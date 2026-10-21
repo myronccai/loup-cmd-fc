@@ -24,20 +24,20 @@ pub const MODE_AUTO: int = 0;
 pub const MODE_TEXT: int = 1;
 pub const MODE_BINARY: int = 2;
 
-# Fields are `var` so that tests can adjust default_options().
+# Tests vary default_options() with `with` copies.
 pub struct Options {
-    pub var help: bool;
-    pub var version: bool;
-    pub var mode: int;            # MODE_AUTO, MODE_TEXT (/L) or MODE_BINARY (/B)
-    pub var abbreviate: bool;     # /A
-    pub var ignore_case: bool;    # /C
-    pub var numbers: bool;        # /N
-    pub var keep_tabs: bool;      # /T
-    pub var unicode: bool;        # /U
-    pub var white: bool;          # /W
-    pub var buffer_lines: int;    # /LBn
-    pub var sync_lines: int;      # /nnnn
-    pub var operands: list[string];
+    pub help: bool;
+    pub version: bool;
+    pub mode: int;            # MODE_AUTO, MODE_TEXT (/L) or MODE_BINARY (/B)
+    pub abbreviate: bool;     # /A
+    pub ignore_case: bool;    # /C
+    pub numbers: bool;        # /N
+    pub keep_tabs: bool;      # /T
+    pub unicode: bool;        # /U
+    pub white: bool;          # /W
+    pub buffer_lines: int;    # /LBn
+    pub sync_lines: int;      # /nnnn
+    pub operands: list[string];
 }
 
 # Text-mode settings with fc's defaults; for tests and for callers that

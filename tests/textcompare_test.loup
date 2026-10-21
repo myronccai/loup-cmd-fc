@@ -13,6 +13,9 @@ from cli.args import (Options, default_options);
 from commands.textcompare import (prepare_text, compare_text, find_resync, format_line,
     MSG_RESYNC_FAILED);
 
+# fc's defaults. Tests vary them with `with` copies of an annotated
+# binding (`let base: Options = defaults();`): Stage0 rejects `with` on an
+# unannotated value that a function of this module returns.
 func defaults(): Options {
     let none: list[string] = [];
     return default_options(none);
@@ -83,15 +86,15 @@ func test_two_blocks(): void {
 }
 
 func test_sync_lines(): void {
-    var opts = defaults();
-    opts.sync_lines = 1;
-    expectEq(run_with("1\n2\n3\n4\n5\n6\n", "1\nA\n3\nB\n5\n6\n", opts),
+    let base: Options = defaults();
+    let one = base with (sync_lines = 1);
+    expectEq(run_with("1\n2\n3\n4\n5\n6\n", "1\nA\n3\nB\n5\n6\n", one),
         "***** a.txt\n1\n2\n3\n***** B.TXT\n1\nA\n3\n*****\n\n"
         + "***** a.txt\n3\n4\n5\n***** B.TXT\n3\nB\n5\n*****\n", "/1 resyncs on one line");
-    opts.sync_lines = 3;
-    expectEq(run_with("1\n2\n3\n4\n5\n", "1\nX\n3\n4\n5\n", opts),
+    let three = base with (sync_lines = 3);
+    expectEq(run_with("1\n2\n3\n4\n5\n", "1\nX\n3\n4\n5\n", three),
         "***** a.txt\n1\n2\n3\n***** B.TXT\n1\nX\n3\n*****\n", "/3: 3 4 5 match");
-    expectEq(run_with("1\n2\n3\n4\n", "1\nX\n3\n4\n", opts),
+    expectEq(run_with("1\n2\n3\n4\n", "1\nX\n3\n4\n", three),
         "***** a.txt\n1\n2\n3\n4\n***** B.TXT\n1\nX\n3\n4\n*****\n", "/3: 3 4 are too few");
 }
 
@@ -99,28 +102,26 @@ func test_nearest_resync_first(): void {
     # 2 3 could match two places; the nearest one wins.
     let keys1 = ["a", "x", "2", "3", "y", "2", "3"];
     let keys2 = ["a", "2", "3", "q", "q", "2", "3"];
-    let found = find_resync(keys1, keys2, 1, 1, 100, 2);
-    expectEq(found[0], 2, "x");
-    expectEq(found[1], 1, "y");
-    let none = find_resync(keys1, ["z", "z"], 1, 1, 100, 2);
-    expectEq(none[0], -1, "no resync");
+    let (x, y) = find_resync(keys1, keys2, 1, 1, 100, 2);
+    expectEq(x, 2, "x");
+    expectEq(y, 1, "y");
+    let (none, _) = find_resync(keys1, ["z", "z"], 1, 1, 100, 2);
+    expectEq(none, -1, "no resync");
 }
 
 func test_buffer_limit(): void {
-    var opts = defaults();
-    opts.buffer_lines = 3;
+    let base: Options = defaults();
     let a = "1\n2\n3\n4\n5\n6\n7\n8\n9\n";
     let b = "1\na\nb\nc\nd\n6\n7\n8\n9\n";
-    expectEq(run_with(a, b, opts),
+    expectEq(run_with(a, b, base with (buffer_lines = 3)),
         MSG_RESYNC_FAILED + "\n***** a.txt\n1\n2\n3\n4\n***** B.TXT\n1\na\nb\nc\n*****\n", "resync failed");
-    opts.buffer_lines = 4;
-    expectEq(run_with(a, b, opts),
+    expectEq(run_with(a, b, base with (buffer_lines = 4)),
         "***** a.txt\n1\n2\n3\n4\n5\n6\n***** B.TXT\n1\na\nb\nc\nd\n6\n*****\n", "four lines fit");
 }
 
 func test_abbreviated(): void {
-    var opts = defaults();
-    opts.abbreviate = true;
+    let base: Options = defaults();
+    let opts = base with (abbreviate = true);
     expectEq(run_with("1\n2\n3\n4\n5\n6\n", "1\nA\nB\nC\n5\n6\n", opts),
         "***** a.txt\n1\n...\n5\n***** B.TXT\n1\n...\n5\n*****\n", "/A");
     expectEq(run_with("1\n2\n", "1\n3\n", opts),
@@ -128,8 +129,8 @@ func test_abbreviated(): void {
 }
 
 func test_line_numbers(): void {
-    var opts = defaults();
-    opts.numbers = true;
+    let base: Options = defaults();
+    let opts = base with (numbers = true);
     expectEq(run_with("1\n2\n3\n4\n", "1\n2\nnew\n3\n4\n", opts),
         "***** a.txt\n    2:  2\n    3:  3\n***** B.TXT\n    2:  2\n    3:  new\n    4:  3\n*****\n",
         "/N");
@@ -137,11 +138,10 @@ func test_line_numbers(): void {
 }
 
 func test_ignore_case_and_white(): void {
-    var opts = defaults();
-    expect(compare_text(prepare_text("a", "Good  Day\n", opts), prepare_text("b", "good day\n", opts),
-        opts).different, "different by default");
-    opts.ignore_case = true;
-    opts.white = true;
+    let plain: Options = defaults();
+    expect(compare_text(prepare_text("a", "Good  Day\n", plain), prepare_text("b", "good day\n", plain),
+        plain).different, "different by default");
+    let opts = plain with (ignore_case = true, white = true);
     expectEq(run_with(" Good \t Day\n", "good day\n", opts),
         "FC: no differences encountered\n", "/C /W");
     expectEq(run_with("A\nb\n", "a\nX\n", opts), "***** a.txt\nA\nb\n***** B.TXT\na\nX\n*****\n",
@@ -149,12 +149,11 @@ func test_ignore_case_and_white(): void {
 }
 
 func test_tabs(): void {
-    var opts = defaults();
+    let opts: Options = defaults();
     expectEq(run_with("a\tb\n", "a       b\n", opts), "FC: no differences encountered\n",
         "tabs expanded by default");
     expectEq(run_with("x\n\ty\n", "z\n\ty\n", opts),
         "***** a.txt\nx\n        y\n***** B.TXT\nz\n        y\n*****\n", "shown expanded");
-    opts.keep_tabs = true;
-    expectEq(run_with("a\tb\n", "a       b\n", opts),
+    expectEq(run_with("a\tb\n", "a       b\n", opts with (keep_tabs = true)),
         "***** a.txt\na\tb\n***** B.TXT\na       b\n*****\n", "/T");
 }
